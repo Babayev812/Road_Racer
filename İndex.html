@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Road Racer</title>
+<style>
+body { margin:0; background:#111; font-family:sans-serif; overflow:hidden; }
+#creator { position:absolute; top:10px; left:50%; transform:translateX(-50%);
+color:white; font-weight:bold; font-size:18px; text-align:center; z-index:10; }
+#gameTitle { font-size:22px; color:cyan; margin-top:5px; }
+#highScore { font-size:16px; color:lime; margin-top:3px; }
+#score { position:absolute; top:80px; right:10px; color:yellow; font-size:20px; z-index:10; }
+#settingsBtn { position:absolute; top:10px; left:10px; font-size:22px; color:white; cursor:pointer; z-index:20; }
+#settingsMenu { position:absolute; top:40px; left:10px; background:#222; border-radius:10px; padding:10px; display:none; z-index:25; }
+#settingsMenu button { display:block; margin:5px 0; width:100%; padding:5px; background:#444; border:none; color:white; border-radius:5px; cursor:pointer; }
+#carSelection { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#333; padding:20px; border-radius:15px; display:flex; gap:20px; z-index:20; }
+.carOption { width:60px; height:90px; border-radius:10px; cursor:pointer; border:3px solid transparent; display:flex; justify-content:center; align-items:center; color:white; font-weight:bold; font-size:18px; }
+.carOption.selected { border-color:yellow; }
+canvas { display:block; margin:0 auto; background:#87CEEB; }
+#controls { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:40px; z-index:15; }
+.ctrlBtn { width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,0.2); color:white; font-size:32px; font-weight:bold; display:flex; align-items:center; justify-content:center; user-select:none; cursor:pointer; box-shadow:0 0 10px rgba(0,0,0,0.6); }
+.ctrlBtn:active { background:rgba(255,255,0,0.6); }
+</style>
+</head>
+<body>
+
+<div id="creator">
+  <div>YARADAN: BABAYEV</div>
+  <div id="gameTitle">Road Racer</div>
+  <div id="highScore">High Score: 0</div>
+</div>
+
+<div id="settingsBtn">⚙️</div>
+<div id="settingsMenu">
+  <button data-lang="az">Azərbaycan</button>
+  <button data-lang="tr">Türkçe</button>
+  <button data-lang="en">English</button>
+  <button data-lang="ru">Русский</button>
+</div>
+
+<div id="score">0</div>
+
+<div id="carSelection">
+  <div class="carOption" data-speed="8" style="background: blue;">Blue</div>
+  <div class="carOption" data-speed="10" style="background: red;">Red</div>
+  <div class="carOption" data-speed="7" style="background: green;">Green</div>
+</div>
+
+<canvas id="gameCanvas" width="400" height="600" style="display:none;"></canvas>
+
+<div id="controls" style="display:none;">
+  <div id="leftBtn" class="ctrlBtn">⟵</div>
+  <div id="rightBtn" class="ctrlBtn">⟶</div>
+</div>
+
+<!-- Musiqilər -->
+<audio id="menuMusic" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" loop autoplay></audio>
+<audio id="bgMusic" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3" loop></audio>
+<audio id="crashSound" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg"></audio>
+
+<script>
+const carSelection = document.getElementById('carSelection');
+const scoreDisplay = document.getElementById('score');
+const highScoreDisplay = document.getElementById('highScore');
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const controls = document.getElementById('controls');
+const leftBtn = document.getElementById('leftBtn');
+const rightBtn = document.getElementById('rightBtn');
+const menuMusic = document.getElementById('menuMusic');
+const bgMusic = document.getElementById('bgMusic');
+const crashSound = document.getElementById('crashSound');
+
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsMenu = document.getElementById('settingsMenu');
+
+let player = { x:180, y:520, width:40, height:70, color:"blue", speed:8 };
+let obstacles = [];
+let score=0;
+let gameRunning=false;
+let selectedCarOption=null;
+
+let highScore = localStorage.getItem("highScore") || 0;
+highScoreDisplay.textContent = "High Score: " + highScore;
+
+let currentLang = localStorage.getItem("gameLang") || "en";
+const texts = {
+  az: { blue:"Mavi", red:"Qırmızı", green:"Yaşıl", over:"Oyun bitdi! Skorunuz: " },
+  tr: { blue:"Mavi", red:"Kırmızı", green:"Yeşil", over:"Oyun bitti! Skorunuz: " },
+  en: { blue:"Blue", red:"Red", green:"Green", over:"Game Over! Your Score: " },
+  ru: { blue:"Синий", red:"Красный", green:"Зелёный", over:"Игра окончена! Ваш счёт: " }
+};
+
+function applyLanguage(lang){
+  currentLang=lang;
+  localStorage.setItem("gameLang", lang);
+  const carOptions = carSelection.querySelectorAll('.carOption');
+  carOptions[0].textContent=texts[lang].blue;
+  carOptions[1].textContent=texts[lang].red;
+  carOptions[2].textContent=texts[lang].green;
+}
+applyLanguage(currentLang);
+
+settingsBtn.addEventListener("click",()=>{
+  settingsMenu.style.display = settingsMenu.style.display === "block" ? "none" : "block";
+});
+settingsMenu.querySelectorAll("button").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    applyLanguage(btn.getAttribute("data-lang"));
+    settingsMenu.style.display="none";
+  });
+});
+
+carSelection.querySelectorAll('.carOption').forEach(option=>{
+  option.addEventListener('click',()=>{
+    selectedCarOption = option;
+    startGame();
+  });
+});
+
+function drawPlayer(){
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x,player.y,player.width,player.height);
+  ctx.fillStyle="lightblue";
+  ctx.fillRect(player.x+5,player.y+5,player.width-10,15);
+  ctx.fillStyle="black";
+  ctx.fillRect(player.x-5,player.y+10,5,15);
+  ctx.fillRect(player.x+player.width,player.y+10,5,15);
+  ctx.fillRect(player.x-5,player.y+40,5,15);
+  ctx.fillRect(player.x+player.width,player.y+40,5,15);
+}
+
+function drawObstacles(){
+  obstacles.forEach(ob=>{
+    ob.y += ob.speed;
+    ctx.fillStyle = "yellow"; 
+    ctx.fillRect(ob.x, ob.y, ob.width, ob.height);
+    ctx.fillStyle="lightblue";
+    ctx.fillRect(ob.x+5, ob.y+5,ob.width-10,15);
+    ctx.fillStyle="black";
+    ctx.fillRect(ob.x-5, ob.y+10,5,15);
+    ctx.fillRect(ob.x+ob.width, ob.y+10,5,15);
+    ctx.fillRect(ob.x-5, ob.y+40,5,15);
+    ctx.fillRect(ob.x+ob.width, ob.y+40,5,15);
+  });
+}
+
+function spawnObstacle(){
+  const laneWidth=40;
+  const maxLanes=9;
+  const x=Math.floor(Math.random()*maxLanes)*laneWidth;
+  obstacles.push({ x:x, y:-60, width:40, height:60, speed:4 + Math.random()*2 });
+}
+
+function checkCollision(){
+  for(let ob of obstacles){
+    if(player.x<ob.x+ob.width && player.x+player.width>ob.x &&
+       player.y<ob.y+ob.height && player.y+player.height>ob.y){
+         crashSound.play();
+         endGame();
+         break;
+       }
+  }
+}
+
+function drawRoad(){
+  const roadWidth=360, roadX=20;
+  ctx.fillStyle="#555";
+  ctx.fillRect(roadX,0,roadWidth,canvas.height);
+  ctx.fillStyle="white";
+  for(let i=0;i<canvas.height;i+=40){
+    ctx.fillRect(roadX+roadWidth/2-5,i,10,20);
+  }
+}
+
+function update(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawRoad();
+  drawPlayer();
+  drawObstacles();
+  checkCollision();
+  if(Math.random()<0.015) spawnObstacle();
+  obstacles=obstacles.filter(ob=>{
+    if(ob.y>canvas.height){
+      score++;
+      scoreDisplay.textContent=score;
+      return false;
+    }
+    return true;
+  });
+}
+
+function startGame(){
+  player.color = selectedCarOption.style.backgroundColor;
+  player.speed = parseInt(selectedCarOption.getAttribute('data-speed'));
+  player.x=180;
+  obstacles=[];
+  score=0;
+  scoreDisplay.textContent=score;
+  gameRunning=true;
+  carSelection.style.display='none';
+  canvas.style.display='block';
+  controls.style.display='flex';
+  bgMusic.play();
+  menuMusic.pause(); menuMusic.currentTime=0;
+  requestAnimationFrame(loop);
+}
+
+function loop(){
+  if(gameRunning){
+    update();
+    requestAnimationFrame(loop);
+  }
+}
+
+function updateHighScore(){
+    if(score > highScore){
+        highScore = score;
+        localStorage.setItem("highScore", highScore);
+        highScoreDisplay.textContent = "High Score: " + highScore;
+    }
+}
+
+function endGame(){
+    gameRunning=false;
+    updateHighScore();
+    alert(texts[currentLang].over + score);
+    carSelection.style.display='flex';
+    canvas.style.display='none';
+    controls.style.display='none';
+    scoreDisplay.textContent='0';
+    obstacles=[];
+    bgMusic.pause(); bgMusic.currentTime=0;
+    menuMusic.play();
+}
+
+// Klaviatura
+document.addEventListener('keydown',e=>{
+  if(!gameRunning) return;
+  if(e.key==="ArrowLeft" && player.x>20) player.x-=40;
+  else if(e.key==="ArrowRight" && player.x+player.width<380) player.x+=40;
+});
+// Mobil
+leftBtn.addEventListener('touchstart',()=>{ if(gameRunning && player.x>20) player.x-=40; });
+rightBtn.addEventListener('touchstart',()=>{ if(gameRunning && player.x+player.width<380) player.x+=40; });
+</script>
+
+</body>
+</html>
